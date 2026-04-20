@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ふたりの対話ノート 💍</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', 'Segoe UI', sans-serif; background: #fff; }
+  textarea { font-family: inherit; }
+  textarea:focus { outline: none; }
+  textarea::placeholder { color: #ccc; }
+  button { font-family: inherit; }
+  @keyframes fadeInUp { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #f5f0ff; }
+  ::-webkit-scrollbar-thumb { background: #ddd0f0; border-radius: 999px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const GAS_URL = "https://script.google.com/macros/s/AKfycby3jZt_ACTE65Vhx80Y7fSpOoQAdMtsQXeZenU93Om_WW_UScR2bChszNAgqFh9M2VZ1Q/exec";
+const GAS_PASSWORD = "sakura2026";
+
+const CATEGORIES = [
+  { id:"values", label:"💭 価値観・人生観", color:"#E8A87C", bg:"#FFF5EE", border:"#F5C9A0",
+    questions:["結婚後の理想の生活スタイルは？（都市 vs 地方、賃貸 vs 持ち家）","人生で最も大切にしていることは何か？","宗教・信仰についての考え方は？","政治的な価値観に大きな違いはあるか？","「幸せな人生」とはどんなものだと思うか？"] },
+  { id:"money", label:"💰 お金・経済", color:"#6BAE75", bg:"#F0FFF2", border:"#A8D5AE",
+    questions:["家計の管理方法は？（共同口座、別々、一方が管理）","毎月どのくらい貯蓄したいか？","大きな出費（旅行、車など）の判断基準は？","借金に対する考え方は？","どちらかが仕事を辞めた場合の対応は？","老後の資金計画についての考えは？"] },
+  { id:"children", label:"👶 子ども・育児", color:"#7EB8D4", bg:"#F0F8FF", border:"#A8D0E6",
+    questions:["子どもは欲しいか？何人くらい？","子育てにおいて大切にしたい価値観は？","教育方針（公立 vs 私立、習い事など）は？","子どもができた後の仕事への考え方は？","もし不妊だった場合、養子や里親を考えるか？","子育てにおけるそれぞれの役割分担は？"] },
+  { id:"family", label:"👨‍👩‍👧 家族・親族", color:"#C47EC4", bg:"#FDF0FF", border:"#E0AEED",
+    questions:["それぞれの両親との関係性・距離感は？","親の介護が必要になった場合の対応は？","帰省の頻度や行事への参加について？","義実家との関わり方について？","家族の行事（お正月、お盆など）の優先度は？"] },
+  { id:"lifestyle", label:"🏠 生活スタイル", color:"#D4956A", bg:"#FFF8F0", border:"#E8C4A0",
+    questions:["家事の分担はどうするか？","生活リズム（朝型・夜型、休日の過ごし方）は合うか？","部屋の清潔さ・整理整頓の基準は同じか？","食事（外食 vs 自炊、食の好みの違い）について？","それぞれのプライベート時間・趣味をどう確保するか？","ペットを飼うことへの考え方は？"] },
+  { id:"work", label:"💼 仕事・キャリア", color:"#5B8DB8", bg:"#F0F5FF", border:"#9ABDE0",
+    questions:["お互いのキャリアへの理解・サポートはできるか？","転勤や転職の可能性があった場合どうするか？","仕事と家庭のバランスについての考え方は？","起業や独立を考えているか？","どのくらいの収入・生活水準を目指しているか？"] },
+  { id:"health", label:"❤️ 健康・身体", color:"#E07070", bg:"#FFF0F0", border:"#F0AAAA",
+    questions:["持病やアレルギー、遺伝的な病気について共有しているか？","健康管理（食事、運動、睡眠）に対する意識は？","精神的な健康（うつ、不安障害など）について話せるか？","医療に対する考え方（西洋医学 vs 代替医療など）は？","お酒・タバコ・嗜好品についての習慣と許容範囲は？"] },
+  { id:"relationship", label:"💑 関係性・コミュニケーション", color:"#E8846A", bg:"#FFF2EE", border:"#F5B5A0",
+    questions:["喧嘩したときの解決方法は？（冷却期間 vs 即話し合い）","スキンシップや愛情表現の頻度・方法は合っているか？","秘密にすること・オープンにすることの境界線は？","友人との付き合い方（夜の外出、異性の友人など）は？","SNSやスマートフォンのプライバシーへの考え方は？","お互いの「変えてほしい」ところを言い合えるか？"] },
+];
+
+const GC = [
+  { label:"男性", emoji:"👨", color:"#5B8DB8", bg:"#F0F5FF", border:"#9ABDE0", light:"#EAF3FF" },
+  { label:"女性", emoji:"👩", color:"#E8846A", bg:"#FFF2EE", border:"#F5B5A0", light:"#FFF0EB" },
+];
+
+async function gasLoad() {
+  const r = await fetch(GAS_URL, { method:"POST", body: JSON.stringify({ action:"load", password: GAS_PASSWORD }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+  return j.data || {};
+}
+async function gasSave(data) {
+  const r = await fetch(GAS_URL, { method:"POST", body: JSON.stringify({ action:"save", password: GAS_PASSWORD, data }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+}
+
+/* ── PINドット ── */
+function PinDots({ value }) {
+  return (
+    <div style={{ display:"flex", gap:14, justifyContent:"center" }}>
+      {[0,1,2,3].map(i => (
+        <div key={i} style={{
+          width:56, height:64, borderRadius:14,
+          border:`2px solid ${value.length > i ? "#C47EC4" : "#ddd"}`,
+          background: value.length > i ? "#FDF0FF" : "#fafafa",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          fontSize:26, color:"#C47EC4",
+          boxShadow: value.length > i ? "0 2px 10px rgba(196,126,196,0.25)" : "none",
+          transition:"all 0.15s",
+        }}>{value.length > i ? "●" : ""}</div>
+      ))}
+    </div>
+  );
+}
+
+/* ── テンキー ── */
+function NumPad({ onPress, onDelete }) {
+  const keys = [1,2,3,4,5,6,7,8,9,"",0,"⌫"];
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, maxWidth:280, margin:"20px auto 0" }}>
+      {keys.map((k,i) => (
+        <button key={i}
+          onClick={() => { if(k==="⌫") onDelete(); else if(k!=="") onPress(String(k)); }}
+          disabled={k===""}
+          style={{
+            height:56, borderRadius:14, fontSize:20, fontWeight:600,
+            border:"1.5px solid #e8e0f0",
+            background: k==="" ? "transparent" : k==="⌫" ? "#f5eeff" : "#fff",
+            color: k==="⌫" ? "#C47EC4" : "#444",
+            cursor: k==="" ? "default" : "pointer",
+            boxShadow: k!=="" && k!=="⌫" ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
+          }}>{k}</button>
+      ))}
+    </div>
+  );
+}
+
+/* ── PIN認証画面 ── */
+function PinScreen({ genderIdx, storedPins, onComplete, isMobile }) {
+  const gc = GC[genderIdx];
+  const isNew = !storedPins[genderIdx];
+  const [phase, setPhase] = useState(isNew ? "set" : "login");
+  const [pin, setPin] = useState("");
+  const [firstPin, setFirstPin] = useState("");
+  const [error, setError] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (!isMobile && inputRef.current) inputRef.current.focus(); }, [phase]);
+
+  const press = d => {
+    setError("");
+    const next = pin + d;
+    if (next.length > 4) return;
+    setPin(next);
+    if (next.length === 4) setTimeout(() => handle(next), 120);
+  };
+  const del = () => { setError(""); setPin(p => p.slice(0,-1)); };
+
+  const handle = val => {
+    if (phase === "set") { setFirstPin(val); setPin(""); setPhase("confirm"); }
+    else if (phase === "confirm") {
+      if (val === firstPin) { onComplete(val); }
+      else { setError("PINが一致しません"); setPin(""); setTimeout(() => { setPhase("set"); setFirstPin(""); setError(""); }, 1400); }
+    } else {
+      if (val === storedPins[genderIdx]) { onComplete(val); }
+      else { setError("PINが違います"); setPin(""); setTimeout(() => setError(""), 1200); }
+    }
+  };
+
+  const titles = { set:"PINを設定", confirm:"もう一度入力", login:"PIN入力" };
+  const subs = { set:"あなた専用の4桁の数字を決めてください", confirm:"確認のため同じPINをもう一度入力してください", login:"設定済みの4桁のPINを入力してください" };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:`linear-gradient(160deg, ${gc.light} 0%, #fff 60%, ${gc.bg} 100%)`, padding:24 }}>
+      <div style={{ background:"rgba(255,255,255,0.97)", borderRadius:24, padding:"40px 36px 36px", boxShadow:"0 8px 48px rgba(0,0,0,0.1)", maxWidth:400, width:"100%", textAlign:"center" }}>
+        <div style={{ fontSize:48, marginBottom:10 }}>{gc.emoji}</div>
+        <div style={{ display:"inline-block", background:gc.bg, border:`1.5px solid ${gc.border}`, borderRadius:999, padding:"4px 16px", fontSize:13, color:gc.color, fontWeight:700, marginBottom:20 }}>{gc.label}</div>
+        <h2 style={{ fontSize:20, fontWeight:700, color:"#333", marginBottom:6 }}>{titles[phase]}</h2>
+        <p style={{ fontSize:13, color:"#aaa", marginBottom:28, lineHeight:1.6 }}>{subs[phase]}</p>
+        <PinDots value={pin} />
+        {error && <p style={{ color:"#E07070", fontSize:13, marginTop:14 }}>{error}</p>}
+        {isMobile ? <NumPad onPress={press} onDelete={del} /> : (
+          <div style={{ marginTop:24 }}>
+            <input ref={inputRef} type="password" inputMode="numeric" maxLength={4} value={pin}
+              onChange={e => { const v=e.target.value.replace(/\D/g,"").slice(0,4); setError(""); setPin(v); if(v.length===4) setTimeout(()=>handle(v),120); }}
+              placeholder="4桁の数字を入力"
+              style={{ width:"100%", padding:"14px 16px", fontSize:20, textAlign:"center", letterSpacing:"0.5em", border:"2px solid #e0d0f0", borderRadius:14, outline:"none", background:"#fdf8ff", color:"#333" }}
+              onFocus={e => e.target.style.borderColor="#C47EC4"}
+              onBlur={e => e.target.style.borderColor="#e0d0f0"}
+            />
+            <p style={{ fontSize:11, color:"#ccc", marginTop:10 }}>4桁入力で自動確定します</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── メインアプリ ── */
+function App() {
+  const [screen, setScreen] = useState("gender");
+  const [genderIdx, setGenderIdx] = useState(null);
+  const [storedPins, setStoredPins] = useState({});
+
+  // savedAnswers = スプレッドシートの最終保存値
+  // draftAnswers = 現在の編集中の値
+  const [savedAnswers, setSavedAnswers] = useState({});
+  const [draftAnswers, setDraftAnswers] = useState({});
+
+  const [openCat, setOpenCat] = useState(CATEGORIES[0].id);
+  const [appState, setAppState] = useState("loading"); // loading | idle | saving | error
+  const [toast, setToast] = useState(null);
+  const [winW, setWinW] = useState(window.innerWidth);
+
+  useEffect(() => {
+    const h = () => setWinW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+
+  const isPC = winW >= 768;
+  const isMobile = !isPC;
+
+  const showToast = (msg, type="success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // 初回ロード
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await gasLoad();
+        if (d.pins) setStoredPins(d.pins);
+        if (d.answers) { setSavedAnswers(d.answers); setDraftAnswers(d.answers); }
+        setAppState("idle");
+      } catch(e) { setAppState("error"); }
+    })();
+  }, []);
+
+  // PIN認証完了
+  const handlePinComplete = async pin => {
+    const nextPins = { ...storedPins, [genderIdx]: pin };
+    setStoredPins(nextPins);
+    setAppState("saving");
+    try {
+      await gasSave({ answers: savedAnswers, pins: nextPins });
+      setAppState("idle");
+    } catch(e) {
+      showToast("保存に失敗しました", "error");
+      setAppState("idle");
+    }
+    setScreen("main");
+  };
+
+  // テキスト変更 → draftだけ更新（保存しない）
+  const handleChange = (catId, qIdx, value) => {
+    const key = `${catId}-${qIdx}-${genderIdx}`;
+    setDraftAnswers(prev => ({ ...prev, [key]: value }));
+  };
+
+  // 未保存の変更があるか
+  const hasUnsaved = () => {
+    return CATEGORIES.some(cat =>
+      cat.questions.some((_, qi) => {
+        const key = `${cat.id}-${qi}-${genderIdx}`;
+        return (draftAnswers[key] || "") !== (savedAnswers[key] || "");
+      })
+    );
+  };
+
+  // 手動保存
+  const handleSave = async () => {
+    if (appState === "saving") return;
+    setAppState("saving");
+    const nextAnswers = { ...savedAnswers, ...draftAnswers };
+    try {
+      await gasSave({ answers: nextAnswers, pins: storedPins });
+      setSavedAnswers(nextAnswers);
+      showToast("保存しました ✓");
+    } catch(e) {
+      showToast("保存に失敗しました。通信を確認してください。", "error");
+    }
+    setAppState("idle");
+  };
+
+  const getDisplayA = (catId, qIdx, gi) => {
+    // 相手の回答はsavedAnswersから（保存済みのみ表示）
+    // 自分の回答はdraftAnswersから（編集中も表示）
+    if (gi === genderIdx) return draftAnswers[`${catId}-${qIdx}-${gi}`] || "";
+    return savedAnswers[`${catId}-${qIdx}-${gi}`] || "";
+  };
+
+  const canSee = (catId, qIdx) => (savedAnswers[`${catId}-${qIdx}-${genderIdx}`] || "").trim().length > 0;
+
+  const myPct = () => {
+    const total = CATEGORIES.reduce((s,c) => s + c.questions.length, 0);
+    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => (savedAnswers[`${c.id}-${qi}-${genderIdx}`]||"").trim()).length, 0);
+    return Math.round(done/total*100);
+  };
+  const partnerPct = () => {
+    const pi = 1 - genderIdx;
+    const total = CATEGORIES.reduce((s,c) => s + c.questions.length, 0);
+    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => (savedAnswers[`${c.id}-${qi}-${pi}`]||"").trim()).length, 0);
+    return Math.round(done/total*100);
+  };
+  const bothPct = () => {
+    const total = CATEGORIES.reduce((s,c) => s + c.questions.length * 2, 0);
+    const done = Object.values(savedAnswers).filter(v => v?.trim()).length;
+    return Math.round(done/total*100);
+  };
+
+  /* ── ローディング ── */
+  if (appState === "loading") return (
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:"linear-gradient(135deg,#FFF9F5,#FFF0F8,#F5F0FF)" }}>
+      <div style={{ fontSize:56, animation:"pulse 1.5s infinite", marginBottom:16 }}>💍</div>
+      <p style={{ color:"#C4A0D8", fontSize:15 }}>データを読み込んでいます…</p>
+    </div>
+  );
+
+  /* ── エラー ── */
+  if (appState === "error") return (
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32, textAlign:"center", background:"linear-gradient(135deg,#FFF9F5,#FFF0F8,#F5F0FF)" }}>
+      <div style={{ fontSize:52, marginBottom:16 }}>⚠️</div>
+      <h2 style={{ color:"#E07070", fontSize:18, marginBottom:10 }}>接続できませんでした</h2>
+      <p style={{ color:"#aaa", fontSize:14, marginBottom:28, lineHeight:1.7, maxWidth:360 }}>インターネット接続を確認して再度お試しください。</p>
+      <button onClick={() => window.location.reload()} style={{ background:"linear-gradient(135deg,#C47EC4,#9B6DB8)", color:"#fff", border:"none", borderRadius:14, padding:"14px 36px", fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(196,126,196,0.35)" }}>再読み込み</button>
+    </div>
+  );
+
+  /* ── 性別選択 ── */
+  if (screen === "gender") return (
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:"linear-gradient(135deg,#FFF9F5,#FFF0F8,#F5F0FF)", padding:24 }}>
+      <div style={{ textAlign:"center", marginBottom:36 }}>
+        <div style={{ fontSize:60, marginBottom:12 }}>💍</div>
+        <h1 style={{ fontSize:isPC?28:22, fontWeight:700, color:"#555", marginBottom:8, letterSpacing:"0.06em" }}>ふたりの対話ノート</h1>
+        <p style={{ fontSize:isPC?14:12, color:"#bbb" }}>結婚前に、じっくり話しておきたいこと</p>
+      </div>
+      <div style={{ background:"rgba(255,255,255,0.95)", borderRadius:24, padding:isPC?"40px 40px 36px":"30px 24px 28px", boxShadow:"0 8px 48px rgba(0,0,0,0.08)", maxWidth:isPC?480:340, width:"100%" }}>
+        <p style={{ textAlign:"center", fontSize:isPC?16:14, fontWeight:700, color:"#666", marginBottom:24 }}>あなたはどちらですか？</p>
+        <div style={{ display:"flex", gap:16 }}>
+          {GC.map((gc,i) => (
+            <button key={i} onClick={() => { setGenderIdx(i); setScreen("pin"); }}
+              style={{ flex:1, padding:isPC?"28px 16px":"22px 10px", borderRadius:18, border:`2px solid ${gc.border}`, background:gc.bg, cursor:"pointer", textAlign:"center", transition:"all 0.15s", boxShadow:"0 2px 12px rgba(0,0,0,0.05)" }}>
+              <div style={{ fontSize:isPC?44:36, marginBottom:8 }}>{gc.emoji}</div>
+              <div style={{ fontSize:isPC?17:15, fontWeight:700, color:gc.color }}>{gc.label}</div>
+            </button>
+          ))}
+        </div>
+        <p style={{ textAlign:"center", fontSize:12, color:"#ccc", marginTop:20 }}>次にPINを設定または入力します</p>
+      </div>
+    </div>
+  );
+
+  /* ── PIN ── */
+  if (screen === "pin") return <PinScreen genderIdx={genderIdx} storedPins={storedPins} onComplete={handlePinComplete} isMobile={isMobile} />;
+
+  /* ── メイン ── */
+  const gc = GC[genderIdx];
+  const pgc = GC[1 - genderIdx];
+  const saving = appState === "saving";
+  const unsaved = hasUnsaved();
+
+  /* 質問ブロック */
+  const QuestionBlock = ({ cat, qi, q }) => {
+    const myVal = getDisplayA(cat.id, qi, genderIdx);
+    const pVal = getDisplayA(cat.id, qi, 1 - genderIdx);
+    const myDone = (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim().length > 0;
+    const pDone = pVal.trim().length > 0;
+    const showP = canSee(cat.id, qi);
+    const bothDone = myDone && pDone;
+    const isDirty = myVal !== (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"");
+
+    return (
+      <div style={{ padding:isPC?"20px 24px":"13px 12px", borderBottom:qi<cat.questions.length-1?`1px solid ${cat.border}40`:"none", background: bothDone ? `${cat.bg}60` : "transparent", transition:"background 0.3s" }}>
+        {/* 質問 */}
+        <div style={{ display:"flex", alignItems:"flex-start", gap:isPC?10:7, marginBottom:isPC?14:10 }}>
+          <span style={{ minWidth:isPC?24:20, height:isPC?24:20, borderRadius:"50%", background:cat.color, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:isPC?11:10, fontWeight:700, marginTop:2, flexShrink:0 }}>{qi+1}</span>
+          <p style={{ margin:0, fontSize:isPC?14.5:12.5, color:"#333", lineHeight:1.7, fontWeight:500, flex:1 }}>{q}</p>
+          {bothDone && <span style={{ fontSize:isPC?18:14, flexShrink:0 }}>✅</span>}
+        </div>
+        {/* 回答欄 */}
+        <div style={{ display:"grid", gridTemplateColumns: isPC ? "1fr 1fr" : "1fr", gap:isPC?12:7 }}>
+          {/* 自分 */}
+          <div style={{ borderRadius:isPC?12:10, overflow:"hidden", border:`1.5px solid ${isDirty ? "#F0C040" : myDone ? gc.color : gc.border}`, background: myDone ? gc.bg : "#fafafa", transition:"all 0.2s" }}>
+            <div style={{ padding:isPC?"6px 12px":"4px 9px", display:"flex", alignItems:"center", gap:5, background: isDirty ? "#FFF8E0" : myDone ? gc.color : gc.bg }}>
+              <span style={{ fontSize:isPC?14:11 }}>{gc.emoji}</span>
+              <span style={{ fontSize:isPC?11:10, fontWeight:700, color: isDirty ? "#B8860B" : myDone ? "#fff" : gc.color }}>{gc.label}（あなた）</span>
+              {isDirty && <span style={{ fontSize:isPC?10:9, color:"#D4A017", marginLeft:"auto" }}>● 未保存</span>}
+              {!isDirty && myDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 保存済み</span>}
+            </div>
+            <textarea value={myVal} onChange={e => handleChange(cat.id, qi, e.target.value)} placeholder="ここに考えを書いてください..." rows={isPC?3:2}
+              style={{ width:"100%", border:"none", background:"transparent", padding:isPC?"10px 12px":"7px 9px", fontSize:isPC?13:12, color:"#333", resize:"vertical", lineHeight:1.6 }} />
+          </div>
+          {/* パートナー */}
+          <div style={{ borderRadius:isPC?12:10, overflow:"hidden", border:`1.5px solid ${showP && pDone ? pgc.color : "#e5e5e5"}`, background: showP && pDone ? pgc.bg : "#f7f7f7", transition:"all 0.3s" }}>
+            <div style={{ padding:isPC?"6px 12px":"4px 9px", display:"flex", alignItems:"center", gap:5, background: showP && pDone ? pgc.color : "#efefef" }}>
+              <span style={{ fontSize:isPC?14:11 }}>{pgc.emoji}</span>
+              <span style={{ fontSize:isPC?11:10, fontWeight:700, color: showP && pDone ? "#fff" : "#bbb" }}>{pgc.label}（パートナー）</span>
+              {!showP && <span style={{ fontSize:isPC?10:9, color:"#ccc", marginLeft:"auto" }}>🔒 回答保存後に表示</span>}
+              {showP && pDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 保存済み</span>}
+              {showP && !pDone && <span style={{ fontSize:isPC?10:9, color:"#ccc", marginLeft:"auto" }}>未記入</span>}
+            </div>
+            <div style={{ padding:isPC?"10px 12px":"7px 9px", minHeight:isPC?56:34 }}>
+              {showP
+                ? pDone ? <p style={{ margin:0, fontSize:isPC?13:12, color:"#333", lineHeight:1.6 }}>{pVal}</p>
+                        : <p style={{ margin:0, fontSize:isPC?13:11.5, color:"#bbb", fontStyle:"italic" }}>まだ回答していません</p>
+                : <p style={{ margin:0, fontSize:isPC?12:11, color:"#ccc", fontStyle:"italic" }}>あなたが回答を保存するとパートナーの回答が表示されます</p>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* 保存ボタン（固定フローティング） */
+  const SaveButton = () => (
+    <div style={{
+      position:"fixed", bottom: isPC ? 32 : 24, right: isPC ? 40 : 20,
+      zIndex:200,
+    }}>
+      <button
+        onClick={handleSave}
+        disabled={saving || !unsaved}
+        style={{
+          display:"flex", alignItems:"center", gap:8,
+          padding: isPC ? "14px 28px" : "12px 22px",
+          borderRadius:999,
+          background: saving ? "#bbb" : unsaved ? "linear-gradient(135deg,#C47EC4,#9B6DB8)" : "linear-gradient(135deg,#aaa,#999)",
+          color:"#fff", border:"none", cursor: saving || !unsaved ? "default" : "pointer",
+          fontSize: isPC ? 15 : 14, fontWeight:700,
+          boxShadow: unsaved && !saving ? "0 6px 24px rgba(196,126,196,0.5)" : "0 2px 8px rgba(0,0,0,0.15)",
+          transition:"all 0.2s",
+          opacity: !unsaved && !saving ? 0.55 : 1,
+        }}
+      >
+        {saving ? (
+          <>
+            <span style={{ display:"inline-block", width:16, height:16, border:"2px solid rgba(255,255,255,0.4)", borderTopColor:"#fff", borderRadius:"50%", animation:"spin 0.7s linear infinite" }} />
+            保存中…
+          </>
+        ) : unsaved ? (
+          <> 💾 保存する </>
+        ) : (
+          <> ✓ 保存済み </>
+        )}
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#FFF9F5 0%,#FFF0F8 50%,#F5F0FF 100%)", paddingBottom:100 }}>
+
+      {/* ヘッダー */}
+      <div style={{ background:"linear-gradient(135deg,#F9C5A7 0%,#F4A0C0 50%,#C5A7F9 100%)", padding:isPC?"32px 40px 28px":"28px 18px 20px", position:"relative", overflow:"hidden" }}>
+        <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse at 20% 50%,rgba(255,255,255,0.2) 0%,transparent 60%)" }} />
+        <div style={{ position:"relative", zIndex:1, maxWidth:1100, margin:"0 auto" }}>
+          {isPC ? (
+            <div style={{ display:"flex", alignItems:"center", gap:32 }}>
+              <div>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:4 }}>
+                  <span style={{ fontSize:32 }}>💍</span>
+                  <h1 style={{ fontSize:24, fontWeight:700, color:"#fff", letterSpacing:"0.05em", textShadow:"0 1px 8px rgba(180,100,150,0.3)" }}>ふたりの対話ノート</h1>
+                </div>
+                <p style={{ color:"rgba(255,255,255,0.85)", fontSize:13 }}>結婚前に、じっくり話しておきたいこと</p>
+              </div>
+              <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:24 }}>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ color:"rgba(255,255,255,0.85)", fontSize:11, marginBottom:6 }}>{gc.emoji} {myPct()}% ／ {pgc.emoji} {partnerPct()}% ／ 全体 {bothPct()}%</div>
+                  <div style={{ width:220, background:"rgba(255,255,255,0.3)", borderRadius:999, height:7, overflow:"hidden" }}>
+                    <div style={{ width:`${bothPct()}%`, height:"100%", background:"rgba(255,255,255,0.9)", borderRadius:999, transition:"width 0.5s" }} />
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.25)", borderRadius:999, padding:"8px 16px" }}>
+                  <span style={{ fontSize:18 }}>{gc.emoji}</span>
+                  <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{gc.label}として入力中</span>
+                  <button onClick={() => { setScreen("gender"); setGenderIdx(null); }}
+                    style={{ background:"rgba(255,255,255,0.3)", border:"none", borderRadius:999, color:"#fff", fontSize:11, padding:"3px 10px", cursor:"pointer", marginLeft:4 }}>変更</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign:"center" }}>
+              <div style={{ fontSize:26, marginBottom:3 }}>💍</div>
+              <h1 style={{ fontSize:17, fontWeight:700, color:"#fff", marginBottom:2, letterSpacing:"0.05em" }}>ふたりの対話ノート</h1>
+              <p style={{ color:"rgba(255,255,255,0.85)", fontSize:10, marginBottom:10 }}>結婚前に、じっくり話しておきたいこと</p>
+              <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:"rgba(255,255,255,0.25)", borderRadius:999, padding:"4px 12px", marginBottom:10 }}>
+                <span style={{ fontSize:14 }}>{gc.emoji}</span>
+                <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>{gc.label}として入力中</span>
+                <button onClick={() => { setScreen("gender"); setGenderIdx(null); }}
+                  style={{ background:"rgba(255,255,255,0.3)", border:"none", borderRadius:999, color:"#fff", fontSize:10, padding:"2px 8px", cursor:"pointer", marginLeft:2 }}>変更</button>
+              </div>
+              <div style={{ maxWidth:260, margin:"0 auto" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                  <span style={{ color:"rgba(255,255,255,0.8)", fontSize:10 }}>全体の進捗</span>
+                  <span style={{ color:"#fff", fontSize:10, fontWeight:700 }}>{bothPct()}%</span>
+                </div>
+                <div style={{ background:"rgba(255,255,255,0.3)", borderRadius:999, height:5, overflow:"hidden" }}>
+                  <div style={{ width:`${bothPct()}%`, height:"100%", background:"rgba(255,255,255,0.9)", borderRadius:999, transition:"width 0.5s" }} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* コンテンツ */}
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:isPC?"24px 32px 40px":"10px 12px 40px" }}>
+        {/* お知らせバー */}
+        <div style={{ background:"rgba(255,255,255,0.88)", borderRadius:12, padding:isPC?"12px 20px":"8px 13px", display:"flex", alignItems:"center", gap:8, border:"1px solid rgba(200,170,240,0.35)", marginBottom:16 }}>
+          <span style={{ fontSize:14 }}>💡</span>
+          <span style={{ fontSize:isPC?13:11, color:"#8B6BA8", lineHeight:1.5 }}>
+            回答を書いたら右下の <strong>「💾 保存する」</strong> ボタンを押してください。保存後にパートナーの回答が表示されます。
+          </span>
+        </div>
+
+        {isPC ? (
+          /* PC: サイドバー + コンテンツ */
+          <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
+            <div style={{ width:240, flexShrink:0, position:"sticky", top:20 }}>
+              <div style={{ background:"rgba(255,255,255,0.93)", borderRadius:16, overflow:"hidden", boxShadow:"0 4px 20px rgba(0,0,0,0.06)", border:"1px solid rgba(220,200,240,0.4)", marginBottom:16 }}>
+                <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(220,200,240,0.4)" }}>
+                  <p style={{ margin:0, fontSize:11, fontWeight:700, color:"#bbb", letterSpacing:"0.08em" }}>カテゴリ</p>
+                </div>
+                {CATEGORIES.map(cat => {
+                  const cnt = cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length;
+                  const active = openCat === cat.id;
+                  return (
+                    <button key={cat.id} onClick={() => setOpenCat(cat.id)} style={{ width:"100%", padding:"11px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", border:"none", background: active ? cat.bg : "transparent", borderLeft: active ? `3px solid ${cat.color}` : "3px solid transparent", cursor:"pointer", transition:"all 0.15s" }}>
+                      <span style={{ fontSize:12.5, fontWeight: active?700:500, color: active ? cat.color : "#555", textAlign:"left" }}>{cat.label}</span>
+                      <span style={{ fontSize:10, background: cnt>0 ? cat.color : "#e0e0e0", color:"#fff", borderRadius:999, padding:"1px 6px", fontWeight:700, marginLeft:6, flexShrink:0 }}>{cnt}/{cat.questions.length}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ background:"rgba(255,255,255,0.93)", borderRadius:16, padding:16, boxShadow:"0 4px 20px rgba(0,0,0,0.06)", border:"1px solid rgba(220,200,240,0.4)" }}>
+                <p style={{ margin:"0 0 12px", fontSize:11, fontWeight:700, color:"#bbb", letterSpacing:"0.08em" }}>進捗状況</p>
+                {[{ label:`${gc.emoji} ${gc.label}（あなた）`, pct:myPct(), color:gc.color }, { label:`${pgc.emoji} ${pgc.label}（相手）`, pct:partnerPct(), color:pgc.color }].map((item,i) => (
+                  <div key={i} style={{ marginBottom: i===0 ? 12 : 0 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                      <span style={{ fontSize:11, color:"#666" }}>{item.label}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:item.color }}>{item.pct}%</span>
+                    </div>
+                    <div style={{ background:"#f0e8f8", borderRadius:999, height:6, overflow:"hidden" }}>
+                      <div style={{ width:`${item.pct}%`, height:"100%", background:item.color, borderRadius:999, transition:"width 0.5s" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              {CATEGORIES.filter(c => c.id === openCat).map(cat => (
+                <div key={cat.id}>
+                  <div style={{ background:cat.bg, border:`1.5px solid ${cat.border}`, borderRadius:"16px 16px 0 0", padding:"18px 24px", display:"flex", alignItems:"center", gap:10 }}>
+                    <h2 style={{ margin:0, fontSize:17, fontWeight:700, color:cat.color }}>{cat.label}</h2>
+                    <span style={{ fontSize:11, background:cat.color, color:"#fff", borderRadius:999, padding:"2px 10px", fontWeight:700, marginLeft:"auto" }}>
+                      {cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length}/{cat.questions.length} 保存済み
+                    </span>
+                  </div>
+                  <div style={{ background:"rgba(255,255,255,0.97)", border:`1.5px solid ${cat.border}`, borderTop:"none", borderRadius:"0 0 16px 16px", overflow:"hidden" }}>
+                    {cat.questions.map((q,qi) => <QuestionBlock key={qi} cat={cat} qi={qi} q={q} />)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* スマホ: アコーディオン */
+          CATEGORIES.map(cat => {
+            const isOpen = openCat === cat.id;
+            const cnt = cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length;
+            return (
+              <div key={cat.id} style={{ marginBottom:10 }}>
+                <button onClick={() => setOpenCat(isOpen ? null : cat.id)} style={{ width:"100%", padding:"11px 13px", borderRadius: isOpen ? "12px 12px 0 0" : 12, border:`1.5px solid ${isOpen ? cat.color : cat.border}`, background: isOpen ? cat.bg : "rgba(255,255,255,0.78)", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", transition:"all 0.18s" }}>
+                  <span style={{ fontWeight:700, fontSize:12.5, color: isOpen ? cat.color : "#555" }}>{cat.label}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ fontSize:10, background: cnt>0 ? cat.color : "#ddd", color:"#fff", borderRadius:999, padding:"2px 7px", fontWeight:700 }}>{cnt}/{cat.questions.length}</span>
+                    <span style={{ color:cat.color, fontSize:15, transition:"transform 0.2s", transform: isOpen ? "rotate(180deg)" : "none" }}>▾</span>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div style={{ background:"rgba(255,255,255,0.97)", border:`1.5px solid ${cat.border}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+                    {cat.questions.map((q,qi) => <QuestionBlock key={qi} cat={cat} qi={qi} q={q} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 保存ボタン（フローティング） */}
+      <SaveButton />
+
+      {/* トースト */}
+      {toast && (
+        <div style={{ position:"fixed", bottom:28, left:"50%", transform:"translateX(-50%)", background: toast.type==="error" ? "#E07070" : "#6BAE75", color:"#fff", padding:"11px 24px", borderRadius:999, fontSize:13, fontWeight:600, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:300, whiteSpace:"nowrap", animation:"fadeInUp 0.2s ease" }}>
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
