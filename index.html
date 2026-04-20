@@ -14,7 +14,8 @@
   textarea:focus { outline: none; }
   textarea::placeholder { color: #ccc; }
   button { font-family: inherit; }
-  @keyframes fadeInUp { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  button:active { opacity: 0.82; }
+  @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
   @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
   @keyframes spin { to { transform: rotate(360deg); } }
   ::-webkit-scrollbar { width: 6px; }
@@ -85,7 +86,7 @@ function PinDots({ value }) {
   );
 }
 
-/* ── テンキー ── */
+/* ── テンキー（スマホ用） ── */
 function NumPad({ onPress, onDelete }) {
   const keys = [1,2,3,4,5,6,7,8,9,"",0,"⌫"];
   return (
@@ -101,6 +102,7 @@ function NumPad({ onPress, onDelete }) {
             color: k==="⌫" ? "#C47EC4" : "#444",
             cursor: k==="" ? "default" : "pointer",
             boxShadow: k!=="" && k!=="⌫" ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
+            transition:"all 0.1s",
           }}>{k}</button>
       ))}
     </div>
@@ -143,7 +145,11 @@ function PinScreen({ genderIdx, storedPins, onComplete, isMobile }) {
   const subs = { set:"あなた専用の4桁の数字を決めてください", confirm:"確認のため同じPINをもう一度入力してください", login:"設定済みの4桁のPINを入力してください" };
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:`linear-gradient(160deg, ${gc.light} 0%, #fff 60%, ${gc.bg} 100%)`, padding:24 }}>
+    <div style={{
+      minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center",
+      background:`linear-gradient(160deg, ${gc.light} 0%, #fff 60%, ${gc.bg} 100%)`,
+      padding:24,
+    }}>
       <div style={{ background:"rgba(255,255,255,0.97)", borderRadius:24, padding:"40px 36px 36px", boxShadow:"0 8px 48px rgba(0,0,0,0.1)", maxWidth:400, width:"100%", textAlign:"center" }}>
         <div style={{ fontSize:48, marginBottom:10 }}>{gc.emoji}</div>
         <div style={{ display:"inline-block", background:gc.bg, border:`1.5px solid ${gc.border}`, borderRadius:999, padding:"4px 16px", fontSize:13, color:gc.color, fontWeight:700, marginBottom:20 }}>{gc.label}</div>
@@ -156,7 +162,7 @@ function PinScreen({ genderIdx, storedPins, onComplete, isMobile }) {
             <input ref={inputRef} type="password" inputMode="numeric" maxLength={4} value={pin}
               onChange={e => { const v=e.target.value.replace(/\D/g,"").slice(0,4); setError(""); setPin(v); if(v.length===4) setTimeout(()=>handle(v),120); }}
               placeholder="4桁の数字を入力"
-              style={{ width:"100%", padding:"14px 16px", fontSize:20, textAlign:"center", letterSpacing:"0.5em", border:"2px solid #e0d0f0", borderRadius:14, outline:"none", background:"#fdf8ff", color:"#333" }}
+              style={{ width:"100%", padding:"14px 16px", fontSize:20, textAlign:"center", letterSpacing:"0.5em", border:"2px solid #e0d0f0", borderRadius:14, outline:"none", background:"#fdf8ff", color:"#333", transition:"border 0.2s" }}
               onFocus={e => e.target.style.borderColor="#C47EC4"}
               onBlur={e => e.target.style.borderColor="#e0d0f0"}
             />
@@ -173,15 +179,11 @@ function App() {
   const [screen, setScreen] = useState("gender");
   const [genderIdx, setGenderIdx] = useState(null);
   const [storedPins, setStoredPins] = useState({});
-
-  // savedAnswers = スプレッドシートの最終保存値
-  // draftAnswers = 現在の編集中の値
-  const [savedAnswers, setSavedAnswers] = useState({});
-  const [draftAnswers, setDraftAnswers] = useState({});
-
+  const [answers, setAnswers] = useState({});
   const [openCat, setOpenCat] = useState(CATEGORIES[0].id);
-  const [appState, setAppState] = useState("loading"); // loading | idle | saving | error
+  const [appState, setAppState] = useState("loading");
   const [toast, setToast] = useState(null);
+  const saveTimerRef = useRef(null);
   const [winW, setWinW] = useState(window.innerWidth);
 
   useEffect(() => {
@@ -195,90 +197,58 @@ function App() {
 
   const showToast = (msg, type="success") => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 2500);
   };
 
-  // 初回ロード
   useEffect(() => {
     (async () => {
       try {
         const d = await gasLoad();
         if (d.pins) setStoredPins(d.pins);
-        if (d.answers) { setSavedAnswers(d.answers); setDraftAnswers(d.answers); }
+        if (d.answers) setAnswers(d.answers);
         setAppState("idle");
       } catch(e) { setAppState("error"); }
     })();
   }, []);
 
-  // PIN認証完了
+  const persistSave = async (nextA, nextP) => {
+    setAppState("saving");
+    try { await gasSave({ answers: nextA, pins: nextP }); setAppState("idle"); }
+    catch(e) { showToast("保存に失敗しました。通信を確認してください。", "error"); setAppState("idle"); }
+  };
+
   const handlePinComplete = async pin => {
     const nextPins = { ...storedPins, [genderIdx]: pin };
     setStoredPins(nextPins);
-    setAppState("saving");
-    try {
-      await gasSave({ answers: savedAnswers, pins: nextPins });
-      setAppState("idle");
-    } catch(e) {
-      showToast("保存に失敗しました", "error");
-      setAppState("idle");
-    }
+    await persistSave(answers, nextPins);
     setScreen("main");
   };
 
-  // テキスト変更 → draftだけ更新（保存しない）
-  const handleChange = (catId, qIdx, value) => {
+  const handleAnswer = (catId, qIdx, value) => {
     const key = `${catId}-${qIdx}-${genderIdx}`;
-    setDraftAnswers(prev => ({ ...prev, [key]: value }));
+    const nextA = { ...answers, [key]: value };
+    setAnswers(nextA);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => persistSave(nextA, storedPins), 1200);
   };
 
-  // 未保存の変更があるか
-  const hasUnsaved = () => {
-    return CATEGORIES.some(cat =>
-      cat.questions.some((_, qi) => {
-        const key = `${cat.id}-${qi}-${genderIdx}`;
-        return (draftAnswers[key] || "") !== (savedAnswers[key] || "");
-      })
-    );
-  };
-
-  // 手動保存
-  const handleSave = async () => {
-    if (appState === "saving") return;
-    setAppState("saving");
-    const nextAnswers = { ...savedAnswers, ...draftAnswers };
-    try {
-      await gasSave({ answers: nextAnswers, pins: storedPins });
-      setSavedAnswers(nextAnswers);
-      showToast("保存しました ✓");
-    } catch(e) {
-      showToast("保存に失敗しました。通信を確認してください。", "error");
-    }
-    setAppState("idle");
-  };
-
-  const getDisplayA = (catId, qIdx, gi) => {
-    // 相手の回答はsavedAnswersから（保存済みのみ表示）
-    // 自分の回答はdraftAnswersから（編集中も表示）
-    if (gi === genderIdx) return draftAnswers[`${catId}-${qIdx}-${gi}`] || "";
-    return savedAnswers[`${catId}-${qIdx}-${gi}`] || "";
-  };
-
-  const canSee = (catId, qIdx) => (savedAnswers[`${catId}-${qIdx}-${genderIdx}`] || "").trim().length > 0;
+  const getA = (catId, qIdx, gi) => answers[`${catId}-${qIdx}-${gi}`] || "";
+  const canSee = (catId, qIdx) => getA(catId, qIdx, genderIdx).trim().length > 0;
 
   const myPct = () => {
     const total = CATEGORIES.reduce((s,c) => s + c.questions.length, 0);
-    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => (savedAnswers[`${c.id}-${qi}-${genderIdx}`]||"").trim()).length, 0);
+    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => getA(c.id,qi,genderIdx).trim()).length, 0);
     return Math.round(done/total*100);
   };
   const partnerPct = () => {
     const pi = 1 - genderIdx;
     const total = CATEGORIES.reduce((s,c) => s + c.questions.length, 0);
-    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => (savedAnswers[`${c.id}-${qi}-${pi}`]||"").trim()).length, 0);
+    const done = CATEGORIES.reduce((s,c) => s + c.questions.filter((_,qi) => getA(c.id,qi,pi).trim()).length, 0);
     return Math.round(done/total*100);
   };
   const bothPct = () => {
     const total = CATEGORIES.reduce((s,c) => s + c.questions.length * 2, 0);
-    const done = Object.values(savedAnswers).filter(v => v?.trim()).length;
+    const done = Object.values(answers).filter(v => v?.trim()).length;
     return Math.round(done/total*100);
   };
 
@@ -331,20 +301,17 @@ function App() {
   const gc = GC[genderIdx];
   const pgc = GC[1 - genderIdx];
   const saving = appState === "saving";
-  const unsaved = hasUnsaved();
 
-  /* 質問ブロック */
   const QuestionBlock = ({ cat, qi, q }) => {
-    const myVal = getDisplayA(cat.id, qi, genderIdx);
-    const pVal = getDisplayA(cat.id, qi, 1 - genderIdx);
-    const myDone = (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim().length > 0;
+    const myVal = getA(cat.id, qi, genderIdx);
+    const pVal = getA(cat.id, qi, 1 - genderIdx);
+    const myDone = myVal.trim().length > 0;
     const pDone = pVal.trim().length > 0;
     const showP = canSee(cat.id, qi);
     const bothDone = myDone && pDone;
-    const isDirty = myVal !== (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"");
 
     return (
-      <div style={{ padding:isPC?"20px 24px":"13px 12px", borderBottom:qi<cat.questions.length-1?`1px solid ${cat.border}40`:"none", background: bothDone ? `${cat.bg}60` : "transparent", transition:"background 0.3s" }}>
+      <div style={{ padding:isPC?"20px 24px":"13px 12px", borderBottom:qi < cat.questions.length-1 ? `1px solid ${cat.border}40` : "none", background: bothDone ? `${cat.bg}60` : "transparent", transition:"background 0.3s" }}>
         {/* 質問 */}
         <div style={{ display:"flex", alignItems:"flex-start", gap:isPC?10:7, marginBottom:isPC?14:10 }}>
           <span style={{ minWidth:isPC?24:20, height:isPC?24:20, borderRadius:"50%", background:cat.color, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:isPC?11:10, fontWeight:700, marginTop:2, flexShrink:0 }}>{qi+1}</span>
@@ -354,14 +321,13 @@ function App() {
         {/* 回答欄 */}
         <div style={{ display:"grid", gridTemplateColumns: isPC ? "1fr 1fr" : "1fr", gap:isPC?12:7 }}>
           {/* 自分 */}
-          <div style={{ borderRadius:isPC?12:10, overflow:"hidden", border:`1.5px solid ${isDirty ? "#F0C040" : myDone ? gc.color : gc.border}`, background: myDone ? gc.bg : "#fafafa", transition:"all 0.2s" }}>
-            <div style={{ padding:isPC?"6px 12px":"4px 9px", display:"flex", alignItems:"center", gap:5, background: isDirty ? "#FFF8E0" : myDone ? gc.color : gc.bg }}>
+          <div style={{ borderRadius:isPC?12:10, overflow:"hidden", border:`1.5px solid ${myDone ? gc.color : gc.border}`, background: myDone ? gc.bg : "#fafafa", transition:"all 0.2s" }}>
+            <div style={{ padding:isPC?"6px 12px":"4px 9px", display:"flex", alignItems:"center", gap:5, background: myDone ? gc.color : gc.bg }}>
               <span style={{ fontSize:isPC?14:11 }}>{gc.emoji}</span>
-              <span style={{ fontSize:isPC?11:10, fontWeight:700, color: isDirty ? "#B8860B" : myDone ? "#fff" : gc.color }}>{gc.label}（あなた）</span>
-              {isDirty && <span style={{ fontSize:isPC?10:9, color:"#D4A017", marginLeft:"auto" }}>● 未保存</span>}
-              {!isDirty && myDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 保存済み</span>}
+              <span style={{ fontSize:isPC?11:10, fontWeight:700, color: myDone ? "#fff" : gc.color }}>{gc.label}（あなた）</span>
+              {myDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 記入済み</span>}
             </div>
-            <textarea value={myVal} onChange={e => handleChange(cat.id, qi, e.target.value)} placeholder="ここに考えを書いてください..." rows={isPC?3:2}
+            <textarea value={myVal} onChange={e => handleAnswer(cat.id, qi, e.target.value)} placeholder="ここに考えを書いてください..." rows={isPC?3:2}
               style={{ width:"100%", border:"none", background:"transparent", padding:isPC?"10px 12px":"7px 9px", fontSize:isPC?13:12, color:"#333", resize:"vertical", lineHeight:1.6 }} />
           </div>
           {/* パートナー */}
@@ -369,15 +335,15 @@ function App() {
             <div style={{ padding:isPC?"6px 12px":"4px 9px", display:"flex", alignItems:"center", gap:5, background: showP && pDone ? pgc.color : "#efefef" }}>
               <span style={{ fontSize:isPC?14:11 }}>{pgc.emoji}</span>
               <span style={{ fontSize:isPC?11:10, fontWeight:700, color: showP && pDone ? "#fff" : "#bbb" }}>{pgc.label}（パートナー）</span>
-              {!showP && <span style={{ fontSize:isPC?10:9, color:"#ccc", marginLeft:"auto" }}>🔒 回答保存後に表示</span>}
-              {showP && pDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 保存済み</span>}
+              {!showP && <span style={{ fontSize:isPC?10:9, color:"#ccc", marginLeft:"auto" }}>🔒 回答後に表示</span>}
+              {showP && pDone && <span style={{ fontSize:isPC?10:9, color:"rgba(255,255,255,0.85)", marginLeft:"auto" }}>✓ 記入済み</span>}
               {showP && !pDone && <span style={{ fontSize:isPC?10:9, color:"#ccc", marginLeft:"auto" }}>未記入</span>}
             </div>
             <div style={{ padding:isPC?"10px 12px":"7px 9px", minHeight:isPC?56:34 }}>
               {showP
                 ? pDone ? <p style={{ margin:0, fontSize:isPC?13:12, color:"#333", lineHeight:1.6 }}>{pVal}</p>
                         : <p style={{ margin:0, fontSize:isPC?13:11.5, color:"#bbb", fontStyle:"italic" }}>まだ回答していません</p>
-                : <p style={{ margin:0, fontSize:isPC?12:11, color:"#ccc", fontStyle:"italic" }}>あなたが回答を保存するとパートナーの回答が表示されます</p>
+                : <p style={{ margin:0, fontSize:isPC?12:11, color:"#ccc", fontStyle:"italic" }}>あなたが回答するとパートナーの回答が表示されます</p>
               }
             </div>
           </div>
@@ -386,43 +352,8 @@ function App() {
     );
   };
 
-  /* 保存ボタン（固定フローティング） */
-  const SaveButton = () => (
-    <div style={{
-      position:"fixed", bottom: isPC ? 32 : 24, right: isPC ? 40 : 20,
-      zIndex:200,
-    }}>
-      <button
-        onClick={handleSave}
-        disabled={saving || !unsaved}
-        style={{
-          display:"flex", alignItems:"center", gap:8,
-          padding: isPC ? "14px 28px" : "12px 22px",
-          borderRadius:999,
-          background: saving ? "#bbb" : unsaved ? "linear-gradient(135deg,#C47EC4,#9B6DB8)" : "linear-gradient(135deg,#aaa,#999)",
-          color:"#fff", border:"none", cursor: saving || !unsaved ? "default" : "pointer",
-          fontSize: isPC ? 15 : 14, fontWeight:700,
-          boxShadow: unsaved && !saving ? "0 6px 24px rgba(196,126,196,0.5)" : "0 2px 8px rgba(0,0,0,0.15)",
-          transition:"all 0.2s",
-          opacity: !unsaved && !saving ? 0.55 : 1,
-        }}
-      >
-        {saving ? (
-          <>
-            <span style={{ display:"inline-block", width:16, height:16, border:"2px solid rgba(255,255,255,0.4)", borderTopColor:"#fff", borderRadius:"50%", animation:"spin 0.7s linear infinite" }} />
-            保存中…
-          </>
-        ) : unsaved ? (
-          <> 💾 保存する </>
-        ) : (
-          <> ✓ 保存済み </>
-        )}
-      </button>
-    </div>
-  );
-
   return (
-    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#FFF9F5 0%,#FFF0F8 50%,#F5F0FF 100%)", paddingBottom:100 }}>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#FFF9F5 0%,#FFF0F8 50%,#F5F0FF 100%)" }}>
 
       {/* ヘッダー */}
       <div style={{ background:"linear-gradient(135deg,#F9C5A7 0%,#F4A0C0 50%,#C5A7F9 100%)", padding:isPC?"32px 40px 28px":"28px 18px 20px", position:"relative", overflow:"hidden" }}>
@@ -447,6 +378,7 @@ function App() {
                 <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.25)", borderRadius:999, padding:"8px 16px" }}>
                   <span style={{ fontSize:18 }}>{gc.emoji}</span>
                   <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{gc.label}として入力中</span>
+                  <span style={{ fontSize:11, color:"rgba(255,255,255,0.75)" }}>{saving ? "保存中…" : "✓ 保存済み"}</span>
                   <button onClick={() => { setScreen("gender"); setGenderIdx(null); }}
                     style={{ background:"rgba(255,255,255,0.3)", border:"none", borderRadius:999, color:"#fff", fontSize:11, padding:"3px 10px", cursor:"pointer", marginLeft:4 }}>変更</button>
                 </div>
@@ -460,6 +392,7 @@ function App() {
               <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:"rgba(255,255,255,0.25)", borderRadius:999, padding:"4px 12px", marginBottom:10 }}>
                 <span style={{ fontSize:14 }}>{gc.emoji}</span>
                 <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>{gc.label}として入力中</span>
+                <span style={{ fontSize:10, color:"rgba(255,255,255,0.75)" }}>{saving ? "保存中…" : "✓"}</span>
                 <button onClick={() => { setScreen("gender"); setGenderIdx(null); }}
                   style={{ background:"rgba(255,255,255,0.3)", border:"none", borderRadius:999, color:"#fff", fontSize:10, padding:"2px 8px", cursor:"pointer", marginLeft:2 }}>変更</button>
               </div>
@@ -478,25 +411,23 @@ function App() {
       </div>
 
       {/* コンテンツ */}
-      <div style={{ maxWidth:1100, margin:"0 auto", padding:isPC?"24px 32px 40px":"10px 12px 40px" }}>
-        {/* お知らせバー */}
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:isPC?"24px 32px 60px":"10px 12px 60px" }}>
         <div style={{ background:"rgba(255,255,255,0.88)", borderRadius:12, padding:isPC?"12px 20px":"8px 13px", display:"flex", alignItems:"center", gap:8, border:"1px solid rgba(200,170,240,0.35)", marginBottom:16 }}>
           <span style={{ fontSize:14 }}>💡</span>
-          <span style={{ fontSize:isPC?13:11, color:"#8B6BA8", lineHeight:1.5 }}>
-            回答を書いたら右下の <strong>「💾 保存する」</strong> ボタンを押してください。保存後にパートナーの回答が表示されます。
-          </span>
+          <span style={{ fontSize:isPC?13:11, color:"#8B6BA8", lineHeight:1.5 }}>相手の回答は、あなたが同じ質問に答えた後に表示されます</span>
         </div>
 
         {isPC ? (
           /* PC: サイドバー + コンテンツ */
           <div style={{ display:"flex", gap:24, alignItems:"flex-start" }}>
+            {/* サイドバー */}
             <div style={{ width:240, flexShrink:0, position:"sticky", top:20 }}>
               <div style={{ background:"rgba(255,255,255,0.93)", borderRadius:16, overflow:"hidden", boxShadow:"0 4px 20px rgba(0,0,0,0.06)", border:"1px solid rgba(220,200,240,0.4)", marginBottom:16 }}>
                 <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(220,200,240,0.4)" }}>
                   <p style={{ margin:0, fontSize:11, fontWeight:700, color:"#bbb", letterSpacing:"0.08em" }}>カテゴリ</p>
                 </div>
                 {CATEGORIES.map(cat => {
-                  const cnt = cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length;
+                  const cnt = cat.questions.filter((_,qi) => getA(cat.id,qi,genderIdx).trim()).length;
                   const active = openCat === cat.id;
                   return (
                     <button key={cat.id} onClick={() => setOpenCat(cat.id)} style={{ width:"100%", padding:"11px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", border:"none", background: active ? cat.bg : "transparent", borderLeft: active ? `3px solid ${cat.color}` : "3px solid transparent", cursor:"pointer", transition:"all 0.15s" }}>
@@ -506,6 +437,7 @@ function App() {
                   );
                 })}
               </div>
+              {/* 進捗 */}
               <div style={{ background:"rgba(255,255,255,0.93)", borderRadius:16, padding:16, boxShadow:"0 4px 20px rgba(0,0,0,0.06)", border:"1px solid rgba(220,200,240,0.4)" }}>
                 <p style={{ margin:"0 0 12px", fontSize:11, fontWeight:700, color:"#bbb", letterSpacing:"0.08em" }}>進捗状況</p>
                 {[{ label:`${gc.emoji} ${gc.label}（あなた）`, pct:myPct(), color:gc.color }, { label:`${pgc.emoji} ${pgc.label}（相手）`, pct:partnerPct(), color:pgc.color }].map((item,i) => (
@@ -521,13 +453,14 @@ function App() {
                 ))}
               </div>
             </div>
+            {/* メインコンテンツ */}
             <div style={{ flex:1, minWidth:0 }}>
               {CATEGORIES.filter(c => c.id === openCat).map(cat => (
                 <div key={cat.id}>
                   <div style={{ background:cat.bg, border:`1.5px solid ${cat.border}`, borderRadius:"16px 16px 0 0", padding:"18px 24px", display:"flex", alignItems:"center", gap:10 }}>
                     <h2 style={{ margin:0, fontSize:17, fontWeight:700, color:cat.color }}>{cat.label}</h2>
                     <span style={{ fontSize:11, background:cat.color, color:"#fff", borderRadius:999, padding:"2px 10px", fontWeight:700, marginLeft:"auto" }}>
-                      {cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length}/{cat.questions.length} 保存済み
+                      {cat.questions.filter((_,qi) => getA(cat.id,qi,genderIdx).trim()).length}/{cat.questions.length} 回答済み
                     </span>
                   </div>
                   <div style={{ background:"rgba(255,255,255,0.97)", border:`1.5px solid ${cat.border}`, borderTop:"none", borderRadius:"0 0 16px 16px", overflow:"hidden" }}>
@@ -541,7 +474,7 @@ function App() {
           /* スマホ: アコーディオン */
           CATEGORIES.map(cat => {
             const isOpen = openCat === cat.id;
-            const cnt = cat.questions.filter((_,qi) => (savedAnswers[`${cat.id}-${qi}-${genderIdx}`]||"").trim()).length;
+            const cnt = cat.questions.filter((_,qi) => getA(cat.id,qi,genderIdx).trim()).length;
             return (
               <div key={cat.id} style={{ marginBottom:10 }}>
                 <button onClick={() => setOpenCat(isOpen ? null : cat.id)} style={{ width:"100%", padding:"11px 13px", borderRadius: isOpen ? "12px 12px 0 0" : 12, border:`1.5px solid ${isOpen ? cat.color : cat.border}`, background: isOpen ? cat.bg : "rgba(255,255,255,0.78)", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", transition:"all 0.18s" }}>
@@ -562,12 +495,9 @@ function App() {
         )}
       </div>
 
-      {/* 保存ボタン（フローティング） */}
-      <SaveButton />
-
       {/* トースト */}
       {toast && (
-        <div style={{ position:"fixed", bottom:28, left:"50%", transform:"translateX(-50%)", background: toast.type==="error" ? "#E07070" : "#6BAE75", color:"#fff", padding:"11px 24px", borderRadius:999, fontSize:13, fontWeight:600, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:300, whiteSpace:"nowrap", animation:"fadeInUp 0.2s ease" }}>
+        <div style={{ position:"fixed", bottom:28, left:"50%", transform:"translateX(-50%)", background: toast.type==="error" ? "#E07070" : "#6BAE75", color:"#fff", padding:"11px 24px", borderRadius:999, fontSize:13, fontWeight:600, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:100, whiteSpace:"nowrap", animation:"fadeIn 0.2s ease" }}>
           {toast.msg}
         </div>
       )}
